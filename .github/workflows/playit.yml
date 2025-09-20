@@ -47,7 +47,7 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config
+          sudo apt-get install -y musl-tools pkg-config binutils
           cargo install cargo-zigbuild --locked
 
       - name: Setup Zig
@@ -62,34 +62,34 @@ jobs:
           cargo zigbuild --release --target ${{ matrix.target }}
           echo "List files in build dir:"
           ls -l target/${{ matrix.target }}/release/
-          BIN="playit-cli"
+          BIN="agent"
           BIN_PATH="target/${{ matrix.target }}/release/${BIN}"
           if [ ! -f "$BIN_PATH" ]; then
-            echo "Không tìm thấy file playit-cli, kiểm tra file thực tế..."
-            # Lấy file thực thi đầu tiên trong thư mục release, loại file .d và thư mục build
+            echo "agent binary not found, checking for alternative..."
+            # Get the first executable file in the release directory, excluding .d files and build dir
             BIN_FOUND="$(ls target/${{ matrix.target }}/release/ | grep -v '\.d$' | grep -v '^build$' | head -n1)"
             BIN_PATH="target/${{ matrix.target }}/release/${BIN_FOUND}"
-            echo "Đã chọn file binary: $BIN_PATH"
+            echo "Selected binary file: $BIN_PATH"
           fi
-          OUT="playit_cli-${{ matrix.target }}"
+          OUT="playit-${{ matrix.target }}"
           cp "$BIN_PATH" "$OUT"
-          llvm-strip "$OUT" || true
+          strip "$OUT" || true
           chmod +x "$OUT"
 
       - name: Pack artifact
         run: |
           mkdir -p dist
-          mv playit_cli-${{ matrix.target }} dist/
+          mv playit-${{ matrix.target }} dist/
           cat > dist/README-${{ matrix.target }}.txt << 'EOF'
           Usage:
-            chmod +x playit_cli-<target>
-            ./playit_cli-<target>
+            chmod +x playit-<target>
+            ./playit-<target>
           EOF
 
       - name: Upload artifact (per-target)
         uses: actions/upload-artifact@v4
         with:
-          name: playit_cli-${{ matrix.target }}
+          name: playit-${{ matrix.target }}
           path: dist/*
 
   release:
@@ -105,26 +105,26 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          cat > release/install.sh << 'EOF'
+          cat > release/install.sh << EOF
           #!/usr/bin/env bash
           set -e
-          REPO="${REPO_OVERRIDE:-${GITHUB_REPOSITORY}}"
+          REPO="\${REPO_OVERRIDE:-${GITHUB_REPOSITORY}}"
 
-          arch="$(uname -m)"
-          case "$arch" in
+          arch="\$(uname -m)"
+          case "\$arch" in
             x86_64)   target="x86_64-unknown-linux-musl" ;;
             i686|i386) target="i686-unknown-linux-musl" ;;
             aarch64|arm64) target="aarch64-unknown-linux-musl" ;;
             armv7l|armv7) target="armv7-unknown-linux-musleabihf" ;;
-            *) echo "Unsupported arch: $arch"; exit 1 ;;
+            *) echo "Unsupported arch: \$arch"; exit 1 ;;
           esac
 
-          url="https://github.com/${REPO}/releases/latest/download/playit_cli-${target}"
-          echo "→ Downloading $url"
-          curl -fL "$url" -o playit_cli
-          chmod +x playit_cli
-          echo "✓ Saved to ./playit_cli"
-          ./playit_cli || true
+          url="https://github.com/\$REPO/releases/latest/download/playit-\${target}"
+          echo "→ Downloading \$url"
+          curl -fL "\$url" -o playit
+          chmod +x playit
+          echo "✓ Saved to ./playit"
+          ./playit || true
           EOF
           chmod +x release/install.sh
 
@@ -132,7 +132,7 @@ jobs:
         run: |
           shopt -s globstar
           mkdir -p release
-          mv artifacts/**/playit_cli-* release/ || true
+          mv artifacts/**/playit-* release/ || true
           mv artifacts/**/README-* release/ || true
 
       - name: Create GitHub Release
